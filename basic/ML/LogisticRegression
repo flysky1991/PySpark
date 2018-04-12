@@ -1,0 +1,34 @@
+%pyspark
+
+from pyspark.sql import Row
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.classification import LogisticRegression
+
+#1.数据初始化
+df = sc.parallelize([
+    Row(label=1.0, weight=1.0, features=Vectors.dense(0.0, 5.0)),
+    Row(label=0.0, weight=2.0, features=Vectors.dense(1.0, 2.0)),
+    Row(label=1.0, weight=3.0, features=Vectors.dense(2.0, 1.0)),
+    Row(label=0.0, weight=4.0, features=Vectors.dense(3.0, 3.0))]).toDF()
+print(df.show())
+
+#2.构建LogisticRegression Classifier
+LRClassifier = LogisticRegression(regParam=0.01, weightCol="weight")
+LRModel = LRClassifier .fit(df)
+
+#3.模型的协方差系数和截距
+print("模型的协方差系数为:{}".format(LRModel.coefficients))
+print("模型的截距为:{}".format(LRModel.intercept))
+
+#4.1 模型测试1
+test1 = sc.parallelize([Row(features=Vectors.dense(-1.0, 1.0))]).toDF()
+result1 = LRModel.transform(test1).head()
+print(result1)
+
+print("rawPrediction:{},probability:{},prediction:{}".format(result1.rawPrediction,result1.probability,result1.prediction))
+
+#4.2 模型测试2
+test2 = sc.parallelize([Row(features=Vectors.sparse(2, [0], [1.0]))]).toDF()
+result2  = LRModel.transform(test2).show()
+print(result2)
+
