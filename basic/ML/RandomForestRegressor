@@ -1,0 +1,46 @@
+%pyspark
+
+from numpy import allclose
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.regression import RandomForestRegressor
+from pyspark.ml.regression import RandomForestRegressionModel
+
+df = spark.createDataFrame([(1.0, Vectors.dense(1.0)), (0.0, Vectors.sparse(1, [], []))], ["label", "features"])
+rf = RandomForestRegressor(numTrees=2, maxDepth=2, seed=42)
+model = rf.fit(df)
+
+#输出模型特征重要性、子树权重
+print("模型特征重要性:{}".format(model.featureImportances))
+
+
+print("模型特征数:{}".format(model.numFeatures))
+print("模型子树数:{}".format(model.getNumTrees))
+print("模型子树结构:{}".format(model.trees))
+
+#SparseVector(1, {0: 1.0})
+print("输出子树权重:{}".format(allclose(model.treeWeights, [1.0, 1.0])))
+
+#模型训练并输出预测值
+test0 = spark.createDataFrame([(Vectors.dense(-1.0),)], ["features"])
+print("模型预测结果1:{}".format(model.transform(test0).head().prediction))
+
+#模型训练并输出预测值
+test1 = spark.createDataFrame([(Vectors.sparse(1, [0], [1.0]),)], ["features"])
+print("模型预测结果2:{}".format(model.transform(test1).head().prediction))
+
+#指定模型存储路径
+temp_path = "/zch/ml/model/test"
+rfr_path = temp_path + "/rfr"
+rf.write().overwrite().save(rfr_path)
+
+rf2 = RandomForestRegressor.load(rfr_path)
+print("模型2子树数:{}".format(rf2.getNumTrees()))
+
+
+model_path = temp_path + "/rfr_model"
+model.write().overwrite().save(model_path)
+
+model2 = RandomForestRegressionModel.load(model_path)
+print(model.featureImportances == model2.featureImportances)
+#True
+
