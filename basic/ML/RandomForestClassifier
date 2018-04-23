@@ -1,0 +1,54 @@
+%pyspark
+
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.feature import StringIndexer
+from pyspark.ml.classification import RandomForestClassifier
+from pyspark.sql import Row
+
+
+#1.读取csv文件并将null值填充为0
+data = spark.sql("""select * from XXX""")
+
+#2.构造训练数据集
+dataSet = data.na.fill('0').rdd.map(list)
+
+(trainData, testData) = dataSet.randomSplit([0.7, 0.3])
+print(trainData.take(1))
+trainingSet = trainData.map(lambda x:Row(label=x[-1], features=Vectors.dense(x[:-1]))).toDF()
+
+train_num = trainingSet.count()
+print("训练样本数:{}".format(train_num))
+print(trainingSet.show())
+
+#3.使用随机森林进行训练
+stringIndexer = StringIndexer(inputCol="label", outputCol="indexed")
+si_model = stringIndexer.fit(trainingSet)
+tf = si_model.transform(trainingSet)
+tf.show()
+
+rf = RandomForestClassifier(numTrees=10, maxDepth=8, labelCol="indexed", seed=42)
+rfcModel = rf.fit(tf)
+
+#输出模型特征重要性、子树权重
+print("模型特征重要性:{}".format(rfcModel.featureImportances))
+print("模型特征数:{}".format(rfcModel.numFeatures))
+
+
+#4.测试
+testSet = testData.map(lambda x:Row(label=x[-1], features=Vectors.dense(x[:-1]))).toDF()
+
+print("测试样本数:{}".format(testSet.count()))
+print(testSet.show())
+
+si_model = stringIndexer.fit(testSet)
+test_tf = si_model.transform(testSet)
+
+result = rfcModel.transform(test_tf)
+result.show()
+
+total_amount=result.count()
+correct_amount = result.filter(result.indexed==result.prediction).count()
+precision_rate = correct_amount/total_amount
+print("预测准确率为:{}".format(precision_rate))
+
+
