@@ -1,0 +1,65 @@
+%pyspark
+
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.classification import GBTClassifier
+from pyspark.ml.feature import StringIndexer
+from numpy import allclose
+from pyspark.sql.types import *
+
+#1.读取数据
+data = spark.sql("""select * from XXX""")
+
+#2.构造训练数据集
+dataSet = data.rdd.map(list)
+(trainData, testData) = dataSet.randomSplit([0.75, 0.25])
+trainingSet = trainData.map(list).map(lambda x:Row(label=x[-1], features=Vectors.dense(x[:-1]))).toDF()
+
+train_num = trainingSet.count()
+print("训练样本数:{}".format(train_num))
+#print(trainingSet.show())
+
+#3.使用GBDT进行训练
+stringIndexer = StringIndexer(inputCol="label", outputCol="indexed")
+si_model = stringIndexer.fit(trainingSet)
+tf = si_model.transform(trainingSet)
+
+gbdt = GBTClassifier(maxIter=50, maxDepth=6, labelCol="indexed", seed=42)
+gbdtModel = gbdt.fit(tf)
+print(gbdtModel.featureImportances)
+
+#4.测试
+data = spark.sql("""select * from XXX""")
+#构造测试数据集
+testSet = data.rdd.map(list).map(lambda x:Row(label=x[-1], features=Vectors.dense(x[:-1]))).toDF()
+print("测试样本数:{}".format(testSet.count()))
+#print(testSet.show())
+
+si_model = stringIndexer.fit(testSet)
+test_tf = si_model.transform(testSet)
+
+result = gbdtModel.transform(test_tf)
+#result.show()
+        
+#5.分类效果评估
+total_amount=result.count()
+correct_amount = result.filter(result.indexed==result.prediction).count()
+precision_rate = correct_amount/total_amount
+print("预测准确率为:{}".format(precision_rate))
+
+positive_precision_amount = result.filter(result.indexed == 0).filter(result.prediction == 0).count()
+negative_precision_amount = result.filter(result.indexed == 1).filter(result.prediction == 1).count()
+positive_false_amount = result.filter(result.indexed == 0).filter(result.prediction == 1).count()
+negative_false_amount = result.filter(result.indexed == 1).filter(result.prediction == 0).count()
+
+print("正样本预测准确数量:{},负样本预测准确数量:{}".format(positive_precision_amount,negative_precision_amount))
+
+positive_amount = result.filter(result.indexed == 0).count()
+negative_amount = result.filter(result.indexed == 1).count()
+
+print("正样本数:{},负样本数:{}".format(positive_amount,negative_amount))
+print("正样本预测错误数量:{},负样本预测错误数量:{}".format(positive_false_amount,negative_false_amount))
+
+recall_rate1 = positive_precision_amount/positive_amount
+recall_rate2 = negative_precision_amount/negative_amount
+
+print("正样本召回率为:{},负样本召回率为:{}".format(recall_rate1,recall_rate2))
