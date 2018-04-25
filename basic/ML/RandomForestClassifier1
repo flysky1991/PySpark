@@ -5,15 +5,16 @@ from pyspark.ml.feature import StringIndexer
 from pyspark.ml.classification import RandomForestClassifier
 from pyspark.sql import Row
 
+#任务目标：通过随机森林解决二分类问题并评估分类效果
 
-#1.读取csv文件并将null值填充为0
-data = spark.sql("""select * from XXX""")
+#1.读取数据
+data = spark.sql("""select * from datatable""")
 
 #2.构造训练数据集
 dataSet = data.na.fill('0').rdd.map(list)
 
 (trainData, testData) = dataSet.randomSplit([0.7, 0.3])
-print(trainData.take(1))
+#print(trainData.take(1))
 trainingSet = trainData.map(lambda x:Row(label=x[-1], features=Vectors.dense(x[:-1]))).toDF()
 
 train_num = trainingSet.count()
@@ -33,7 +34,6 @@ rfcModel = rf.fit(tf)
 print("模型特征重要性:{}".format(rfcModel.featureImportances))
 print("模型特征数:{}".format(rfcModel.numFeatures))
 
-
 #4.测试
 testSet = testData.map(lambda x:Row(label=x[-1], features=Vectors.dense(x[:-1]))).toDF()
 
@@ -46,9 +46,26 @@ test_tf = si_model.transform(testSet)
 result = rfcModel.transform(test_tf)
 result.show()
 
+#5.分类效果评估
 total_amount=result.count()
 correct_amount = result.filter(result.indexed==result.prediction).count()
 precision_rate = correct_amount/total_amount
 print("预测准确率为:{}".format(precision_rate))
 
+positive_precision_amount = result.filter(result.indexed == 0).filter(result.prediction == 0).count()
+negative_precision_amount = result.filter(result.indexed == 1).filter(result.prediction == 1).count()
+positive_false_amount = result.filter(result.indexed == 0).filter(result.prediction == 1).count()
+negative_false_amount = result.filter(result.indexed == 1).filter(result.prediction == 0).count()
 
+print("正样本预测准确数量:{},负样本预测准确数量:{}".format(positive_precision_amount,negative_precision_amount))
+
+positive_amount = result.filter(result.indexed == 0).count()
+negative_amount = result.filter(result.indexed == 1).count()
+
+print("正样本数:{},负样本数:{}".format(positive_amount,negative_amount))
+print("正样本预测错误数量:{},负样本错误准确数量:{}".format(positive_false_amount,negative_false_amount))
+
+recall_rate1 = positive_precision_amount/positive_amount
+recall_rate2 = negative_precision_amount/negative_amount
+
+print("正样本召回率为:{},负样本召回率为:{}".format(recall_rate1,recall_rate2))
