@@ -1,0 +1,49 @@
+%pyspark
+
+from pyspark.sql.types import *
+from pyspark.mllib.classification import SVMModel
+from pyspark.mllib.classification import SVMWithSGD
+from pyspark.mllib.regression import LabeledPoint
+from pyspark.mllib.evaluation import BinaryClassificationMetrics
+
+#1.训练模型
+
+#1.1 读取数据，构造训练数据集
+data = spark.sql("""select * from trainSetDemo""").rdd.collect()
+
+#需要先将一行行的RDD数据序列化，然后再构造LabeledPoint类型的label和features
+trainData = sc.parallelize(data).map(lambda x:LabeledPoint(label=x[-1],features=x[:-1]))
+
+print("训练集数量:{}".format(trainData.count()))
+#print(trainData.first().features)
+
+#1.2 训练模型
+svm = SVMWithSGD.train(sc.parallelize(trainData.collect()), iterations=20)
+
+#prediction = svm.predict(trainData.first().features)
+#print("真实值:{},预测值{}".format(prediction,trainData.first().label))
+
+#2.评估模型训练效果
+
+#2.1 构造测试数据集
+data2 = spark.sql("""select * from testSetDemo""").rdd.collect()
+
+testData = sc.parallelize(data2).map(lambda x:LabeledPoint(label=x[-1],features=x[:-1]))
+
+print("测试集数量:{}".format(testData.count()))
+
+#2.2 分类效果评估
+
+#总体预测准确率
+svmTotalCorrect = testData.map(lambda x: 1 if svm.predict(x.features) == x.label else 0).sum()
+#print("分类准确数:{}".format(svmTotalCorrect))
+svmAccuracy = float(svmTotalCorrect)/testData.count()
+print("总体预测准确率为{}".format(svmAccuracy))
+
+#AUC计算
+scoreAndLabels = testData.map(lambda x:(float(svm.predict(x.features)),x.label))
+metrics = BinaryClassificationMetrics(scoreAndLabels)
+print('PR值:{:.4f},AUC值:{:.4f}'.format(metrics.areaUnderPR, metrics.areaUnderROC))
+
+
+
