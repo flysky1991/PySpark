@@ -1,0 +1,43 @@
+%pyspark
+
+from pyspark.ml.clustering import GaussianMixture
+from pyspark.ml.feature import StringIndexer
+from pyspark.ml.linalg import Vectors
+
+#1.读取数据，构造训练数据集
+df = spark.sql("""select * from XXX""")
+trainingSet = df.rdd.map(list).map(lambda x:Row(label=x[-1],features=Vectors.dense(x[-8:-1]))).toDF()
+#print(trainingSet.show())
+
+#2.GaussianMixture模型训练
+StringIndexer = StringIndexer(inputCol='label',outputCol='indexed')
+si_model = StringIndexer.fit(trainingSet)
+td = si_model.transform(trainingSet)
+
+gm = GaussianMixture(k=2,tol=0.0001,maxIter=10,seed=10)
+gModel = gm.fit(td)
+print(gModel.weights)
+print(gModel.summary.k,gModel.summary.clusterSizes)
+#print(model.gaussiansDF.select("mean").head())
+#print(model.gaussiansDF.select("cov").head())
+
+result = gModel.transform(td)
+print(result.show())
+
+total_amount=result.count()
+correct_amount = result.filter(result.indexed==result.prediction).count()
+precision_rate = correct_amount/total_amount
+print("聚类准确率为:{}".format(precision_rate))
+
+positive_amount = result.filter(result.indexed == 0).count()
+negative_amount = result.filter(result.indexed == 1).count()
+
+print("正样本数:{},负样本数:{}".format(positive_amount,negative_amount))
+
+positive_precision_amount = result.filter(result.indexed == 0).filter(result.prediction == 0).count()
+negative_precision_amount = result.filter(result.indexed == 1).filter(result.prediction == 1).count()
+print("正样本聚类准确数量:{},负样本聚类准确数量:{}".format(positive_precision_amount,negative_precision_amount))
+
+positive_clustering_rate = positive_precision_amount/positive_amount
+negative_clustering_rate = negative_precision_amount/negative_amount
+print("正样本聚类准确率为:{},负样本聚类准确率为:{}".format(positive_clustering_rate,negative_clustering_rate))
